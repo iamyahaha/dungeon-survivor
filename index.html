@@ -248,7 +248,7 @@ function spawnEnemy(){
   let type='grub';
   const roll=Math.random();
   if(min>1.5 && roll<0.16) type='runner';
-  if(min>2 && roll>=0.16 && roll<0.27) type='elite';   // advanced crystal-golem, drops lots of XP
+  if(min>0.4 && roll>=0.16 && roll<0.28) type='elite';   // advanced crystal-golem, drops lots of XP
   if(min>3 && roll>0.9) type='brute';
   let e;
   const hpScale=1+min*0.32;
