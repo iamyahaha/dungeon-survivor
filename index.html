@@ -196,7 +196,7 @@ let game=null;
 function newGame(){
   return {
     t:0, running:true, paused:false,
-    player:{ x:0,y:0, r:13, speed:3.0, hp:120, maxhp:120, xp:0, lvl:1, next:5, kills:0,
+    player:{ x:0,y:0, r:13, speed:3.0, hp:140, maxhp:140, xp:0, lvl:1, next:4, kills:0,
              ifr:0, face:1, anim:0, frame:0, moving:false },
     cam:{x:0,y:0},
     enemies:[], bullets:[], orbs:[], particles:[], damageTexts:[],
@@ -207,7 +207,7 @@ function newGame(){
       orbit:{ lvl:0, ang:0, dmg:14, count:0, radius:60, size:11 },       // orbiting blades
       nova:{ lvl:0, cd:0, rate:160, dmg:26, radius:90 }                  // shockwave
     },
-    stats:{ pickup:60, regen:0, dmgMul:1, hpRegenT:0 },
+    stats:{ pickup:60, regen:0, dmgMul:1, hpRegenT:0, atkLvl:0 },
     flash:0,
   };
 }
@@ -251,11 +251,11 @@ function spawnEnemy(){
   if(min>0.4 && roll>=0.16 && roll<0.28) type='elite';   // advanced crystal-golem, drops lots of XP
   if(min>3 && roll>0.9) type='brute';
   let e;
-  const hpScale=1+min*0.32;
-  if(type==='grub')   e={x,y,r:12,hp:22*hpScale,maxhp:22*hpScale,speed:rand(0.9,1.2),dmg:6,xp:1,color:'#7ad36b',type};
-  if(type==='runner') e={x,y,r:10,hp:15*hpScale,maxhp:15*hpScale,speed:rand(1.9,2.3),dmg:5,xp:1,color:'#ffd86b',type};
-  if(type==='elite')  e={x,y,r:26,hp:160*hpScale,maxhp:160*hpScale,speed:rand(0.7,0.9),dmg:14,xp:1,color:'#8a6bff',type};
-  if(type==='brute')  e={x,y,r:20,hp:80*hpScale,maxhp:80*hpScale,speed:rand(0.75,0.95),dmg:12,xp:4,color:'#ff6b8a',type};
+  const hpScale=1+min*0.20;
+  if(type==='grub')   e={x,y,r:12,hp:16*hpScale,maxhp:16*hpScale,speed:rand(0.9,1.2),dmg:5,xp:2,color:'#7ad36b',type};
+  if(type==='runner') e={x,y,r:10,hp:11*hpScale,maxhp:11*hpScale,speed:rand(1.85,2.2),dmg:4,xp:2,color:'#ffd86b',type};
+  if(type==='elite')  e={x,y,r:26,hp:120*hpScale,maxhp:120*hpScale,speed:rand(0.7,0.9),dmg:10,xp:1,color:'#8a6bff',type};
+  if(type==='brute')  e={x,y,r:20,hp:62*hpScale,maxhp:62*hpScale,speed:rand(0.75,0.95),dmg:9,xp:6,color:'#ff6b8a',type};
   e.kb={x:0,y:0};
   e.anim=rand(0,GRUB_FRAMES); e.face=1;
   if(type==='grub') e.green=Math.random()<0.5;   // randomly purple or green grub
@@ -305,7 +305,7 @@ function killEnemy(e){
     // advanced monster bursts a shower of XP gems
     for(let i=0;i<10;i++){
       const a=Math.random()*Math.PI*2, d=rand(8,38);
-      game.orbs.push({x:e.x+Math.cos(a)*d, y:e.y+Math.sin(a)*d, xp:2, r:6});
+      game.orbs.push({x:e.x+Math.cos(a)*d, y:e.y+Math.sin(a)*d, xp:3, r:6});
     }
     for(let i=0;i<20;i++)game.particles.push({x:e.x,y:e.y,vx:rand(-5,5),vy:rand(-5,5),life:28,max:28,col:'#c8a0ff',r:4});
   } else {
@@ -345,9 +345,9 @@ function update(){
 
   // spawning
   g.spawnTimer++;
-  const interval=Math.max(26, g.spawnInterval - Math.floor(g.t/900)*5);
+  const interval=Math.max(36, g.spawnInterval - Math.floor(g.t/1100)*4);
   if(g.spawnTimer>=interval){ g.spawnTimer=0;
-    const burst=1+Math.floor(g.t/3600);
+    const burst=1+Math.floor(g.t/5400);
     for(let i=0;i<burst;i++)spawnEnemy();
   }
 
@@ -426,7 +426,7 @@ function update(){
 function levelUp(){
   const g=game,p=g.player;
   p.xp-=p.next; p.lvl++;
-  p.next=Math.floor(p.next*1.45+3);
+  p.next=Math.floor(p.next*1.32+3);
   g.paused=true;
   showUpgrades();
 }
@@ -437,7 +437,8 @@ function upgradePool(){
   const pool=[];
   pool.push({ico:'🔮',name:'魔弹强化',desc:()=> w.bolt.count<5?'多发射一枚魔弹':'魔弹伤害+8',
     lvl:w.bolt.lvl,apply:()=>{ if(w.bolt.count<5)w.bolt.count++; else w.bolt.dmg+=8; w.bolt.lvl++; }});
-  pool.push({ico:'⚡',name:'急速施法',desc:()=>'魔弹冷却 -15%',lvl:'',apply:()=>{ w.bolt.rate=Math.max(12,Math.round(w.bolt.rate*0.85)); }});
+  pool.push({ico:'⚡',name:'疾速攻击',desc:()=>'攻击速度 +20%（魔弹连发更快）',lvl:s.atkLvl,
+    apply:()=>{ w.bolt.rate=Math.max(8,Math.round(w.bolt.rate*0.80)); s.atkLvl++; }});
   pool.push({ico:'🗡️',name:'环绕飞刃',desc:()=> w.orbit.count===0?'获得1把环绕飞刃':'增加1把飞刃 / 伤害+6',
     lvl:w.orbit.lvl,apply:()=>{ w.orbit.count++; w.orbit.dmg+=6; w.orbit.lvl++; }});
   pool.push({ico:'💥',name:'冲击波',desc:()=> w.nova.lvl===0?'周期性震退周围敌人':'冲击波范围+20 伤害+12',
