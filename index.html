@@ -238,6 +238,13 @@ const ENEMY_SIZE_TIERS=[
   {id:'elite',  rarity:'精英', mark:'★', scale:1.45, hpMul:2.25, speedMul:1.04, dmgMul:1.62, xpMul:2.50, lvlBonus:2, text:'#ff8a96', ring:'rgba(255,107,138,0.86)', aura:'rgba(255,107,138,0.34)'},
   {id:'giant',  rarity:'首领', mark:'✦', scale:1.72, hpMul:3.50, speedMul:0.86, dmgMul:2.20, xpMul:4.00, lvlBonus:4, text:'#be7aff', ring:'rgba(190,122,255,0.9)', aura:'rgba(190,122,255,0.38)'},
 ];
+const BOLT_TYPES={
+  arcane:{name:'奥术', col:'#7ad3ff', core:'#e6f6ff', glow:'rgba(122,211,255,0.78)', dmgMul:1.00, speedMul:1.00, sizeMul:1.00, lifeMul:1.00, trail:9},
+  flame:{name:'烈焰', col:'#ff8a3d', core:'#fff0b8', glow:'rgba(255,138,61,0.78)', dmgMul:1.12, speedMul:0.94, sizeMul:1.08, lifeMul:0.96, trail:11, effect:'splash'},
+  frost:{name:'霜冻', col:'#8ff4ff', core:'#f1ffff', glow:'rgba(143,244,255,0.78)', dmgMul:0.90, speedMul:0.92, sizeMul:0.96, lifeMul:1.08, trail:10, effect:'slow'},
+  thunder:{name:'雷光', col:'#ffe66b', core:'#fffbd0', glow:'rgba(255,230,107,0.84)', dmgMul:0.88, speedMul:1.24, sizeMul:0.88, lifeMul:0.94, pierceBonus:1, trail:14, effect:'chain'},
+  void:{name:'虚空', col:'#b477ff', core:'#f0d8ff', glow:'rgba(180,119,255,0.84)', dmgMul:1.25, speedMul:0.82, sizeMul:1.22, lifeMul:1.16, trail:12, kmag:6},
+};
 
 function xpForNextLevel(level){
   let xp=7;
@@ -292,7 +299,8 @@ function newGame(){
     spawnTimer:0,
     // weapons / stats
     weapons:{
-      bolt:{ lvl:1, cd:0, rate:34, dmg:22, count:1, speed:6.5, size:6, life:90, pierce:0 }, // auto magic bolt
+      bolt:{ lvl:1, cd:0, rate:34, dmg:22, count:1, speed:6.5, size:6, life:90, pierce:0,
+        types:['arcane','flame','frost'], seq:0 }, // auto magic bolts
       orbit:{ lvl:0, ang:0, dmg:14, count:0, radius:60, size:11, spin:0.06 },       // orbiting blades
       nova:{ lvl:0, cd:0, rate:160, dmg:26, radius:90 }                  // shockwave
     },
@@ -391,13 +399,43 @@ function fireBolt(){
   for(let i=0;i<w.count;i++){
     const spread=(i-(w.count-1)/2)*0.22;
     const a=baseAng+spread;
+    const typeId=w.types[w.seq++%w.types.length]||'arcane';
+    const type=BOLT_TYPES[typeId]||BOLT_TYPES.arcane;
     const crit=Math.random()<g.stats.crit;
-    const dmg=w.dmg*g.stats.dmgMul*(crit?g.stats.critMul:1);
-    g.bullets.push({x:p.x,y:p.y,vx:Math.cos(a)*w.speed,vy:Math.sin(a)*w.speed,
-      r:w.size,dmg,life:w.life,pierce:w.pierce,crit});
+    const speed=w.speed*type.speedMul;
+    const dmg=w.dmg*g.stats.dmgMul*type.dmgMul*(crit?g.stats.critMul:1);
+    g.bullets.push({x:p.x,y:p.y,px:p.x,py:p.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,
+      r:w.size*type.sizeMul,dmg,life:Math.round(w.life*type.lifeMul),
+      pierce:w.pierce+(type.pierceBonus||0),crit,type:typeId,col:type.col,core:type.core,glow:type.glow,
+      effect:type.effect,trail:type.trail,kmag:type.kmag||4});
   }
 }
 function p0(){return game.player;}
+
+function applyBoltEffect(e,b){
+  const g=game;
+  if(b.effect==='slow'){
+    e.slow=Math.max(e.slow||0,54);
+    g.particles.push({x:e.x,y:e.y,vx:rand(-1.2,1.2),vy:rand(-1.2,1.2),life:22,max:22,col:b.col,r:4});
+  } else if(b.effect==='splash'){
+    for(let i=0;i<7;i++)g.particles.push({x:e.x,y:e.y,vx:rand(-2.5,2.5),vy:rand(-2.5,2.5),life:16,max:16,col:b.col,r:3});
+    for(const other of g.enemies){
+      if(other===e||other.dead||other.hidden) continue;
+      if(dist(e.x,e.y,other.x,other.y)<42+other.r) hitEnemy(other,b.dmg*0.28,other.x-e.x,other.y-e.y,2);
+    }
+  } else if(b.effect==='chain'){
+    let target=null, best=92;
+    for(const other of g.enemies){
+      if(other===e||other.dead||other.hidden) continue;
+      const d=dist(e.x,e.y,other.x,other.y);
+      if(d<best){ best=d; target=other; }
+    }
+    if(target){
+      g.particles.push({x:(e.x+target.x)/2,y:(e.y+target.y)/2,vx:0,vy:0,life:12,max:12,col:b.col,r:5});
+      hitEnemy(target,b.dmg*0.45,target.x-e.x,target.y-e.y,3);
+    }
+  }
+}
 
 function fireNova(){
   const g=game,p=p0(),w=g.weapons.nova;
@@ -487,13 +525,15 @@ function update(){
 
   // bullets
   for(const b of g.bullets){
+    b.px=b.x; b.py=b.y;
     b.x+=b.vx;b.y+=b.vy;b.life--;
     b.hidden=!inViewport(b.x,b.y,b.r,BULLET_HIDE_MARGIN);
     if(b.hidden){ b.life=0; continue; }
     for(const e of g.enemies){
       if(e.dead||e.hidden)continue;
       if(dist(b.x,b.y,e.x,e.y)<e.r+b.r){
-        hitEnemy(e,b.dmg,b.vx,b.vy,4);
+        hitEnemy(e,b.dmg,b.vx,b.vy,b.kmag||4);
+        applyBoltEffect(e,b);
         if(b.pierce>0){b.pierce--;}else{b.life=0;}
         break;
       }
@@ -520,9 +560,11 @@ function update(){
   for(const e of g.enemies){
     if(e.dead)continue;
     if(e.obCd>0)e.obCd--;
+    const slowMul=e.slow>0?0.58:1;
+    if(e.slow>0)e.slow--;
     const a=Math.atan2(p.y-e.y,p.x-e.x);
-    e.x+=Math.cos(a)*e.speed + e.kb.x;
-    e.y+=Math.sin(a)*e.speed + e.kb.y;
+    e.x+=Math.cos(a)*e.speed*slowMul + e.kb.x;
+    e.y+=Math.sin(a)*e.speed*slowMul + e.kb.y;
     e.kb.x*=0.8; e.kb.y*=0.8;
     e.hidden=!inViewport(e.x,e.y,e.r,SPRITE_HIDE_MARGIN);
     if(!e.hidden) e.anim+=0.15;
@@ -590,6 +632,10 @@ function upgradePool(){
     apply:()=>{ if(w.bolt.pierce<4)w.bolt.pierce++; else w.bolt.dmg+=10; }});
   pool.push({id:'bolt_speed',ico:'💫',name:'星轨加速',dropWeight:7,desc:()=>'魔弹速度+12% 飞行时间+8%',lvl:'',apply:()=>{ w.bolt.speed*=1.12; w.bolt.life=Math.round(w.bolt.life*1.08); }});
   pool.push({id:'bolt_size',ico:'🟦',name:'奥术膨胀',dropWeight:7,desc:()=>'魔弹体积+15% 伤害+4',lvl:'',apply:()=>{ w.bolt.size=Math.min(13,w.bolt.size*1.15); w.bolt.dmg+=4; }});
+  pool.push({id:'bolt_thunder',ico:'⚡',name:'雷光魔弹',dropWeight:6,desc:()=> w.bolt.types.includes('thunder')?'雷光魔弹伤害+8':'解锁雷光魔弹：高速、穿透、连锁',
+    lvl:w.bolt.types.includes('thunder')?1:'',apply:()=>{ if(!w.bolt.types.includes('thunder'))w.bolt.types.push('thunder'); else w.bolt.dmg+=8; }});
+  pool.push({id:'bolt_void',ico:'🟣',name:'虚空魔弹',dropWeight:5,desc:()=> w.bolt.types.includes('void')?'虚空魔弹伤害+10':'解锁虚空魔弹：更大、更重、更强',
+    lvl:w.bolt.types.includes('void')?1:'',apply:()=>{ if(!w.bolt.types.includes('void'))w.bolt.types.push('void'); else w.bolt.dmg+=10; }});
   pool.push({id:'orbit_blade',ico:'🗡️',name:'环绕飞刃',dropWeight:10,desc:()=> w.orbit.count===0?'获得1把环绕飞刃':'增加1把飞刃 / 伤害+6',
     lvl:w.orbit.lvl,apply:()=>{ w.orbit.count++; w.orbit.dmg+=6; w.orbit.lvl++; }});
   pool.push({id:'orbit_area',ico:'⭕',name:'刃环扩张',dropWeight:6,desc:()=>'飞刃范围+18 体积+10%',lvl:'',apply:()=>{ w.orbit.radius+=18; w.orbit.size*=1.1; }});
@@ -812,15 +858,20 @@ function draw(){
   }
 
   // bullets (with outer glow)
-  ctx.shadowColor='#7ad3ff'; ctx.shadowBlur=16;
   for(const b of g.bullets){
     if(b.hidden || !inViewport(b.x,b.y,b.r,BULLET_HIDE_MARGIN)) continue;
-    // soft outer halo
-    ctx.globalAlpha=0.35; ctx.fillStyle=b.crit?'#ffd86b':'#7ad3ff';
+    ctx.save();
+    ctx.lineCap='round';
+    ctx.strokeStyle=b.glow||'rgba(122,211,255,0.62)';
+    ctx.lineWidth=Math.max(2,b.r*0.55);
+    ctx.globalAlpha=0.42;
+    ctx.beginPath(); ctx.moveTo(b.px||b.x,b.py||b.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    ctx.shadowColor=b.glow||'#7ad3ff'; ctx.shadowBlur=b.trail||16;
+    ctx.globalAlpha=0.34; ctx.fillStyle=b.crit?'#ffd86b':(b.col||'#7ad3ff');
     ctx.beginPath();ctx.arc(b.x,b.y,b.r+5,0,7);ctx.fill();
-    // bright core
-    ctx.globalAlpha=1; ctx.fillStyle=b.crit?'#fff2a8':'#e6f6ff';
+    ctx.globalAlpha=1; ctx.fillStyle=b.crit?'#fff2a8':(b.core||'#e6f6ff');
     ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);ctx.fill();
+    ctx.restore();
   }
   ctx.shadowBlur=0; ctx.globalAlpha=1;
 
