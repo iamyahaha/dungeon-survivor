@@ -454,7 +454,8 @@ function hitEnemy(e,dmg,kx,ky,kmag){
   e.hp-=dmg;
   const m=Math.hypot(kx,ky)||1;
   e.kb.x+=kx/m*(kmag||3); e.kb.y+=ky/m*(kmag||3);
-  game.damageTexts.push({x:e.x,y:e.y-e.r,txt:Math.round(dmg),life:30,vy:-0.8,col:dmg>45?'#ffd86b':'#fff'});
+  const amount=Math.round(dmg);
+  game.damageTexts.push({x:e.x,y:e.y-e.r,txt:'血量-'+amount,life:32,max:32,vy:-0.82,col:dmg>45?'#ffcf5a':'#ff5d6c',stroke:'#24070c'});
   for(let i=0;i<3;i++)game.particles.push({x:e.x,y:e.y,vx:rand(-2,2),vy:rand(-2,2),life:12,max:12,col:e.color,r:3});
   if(e.hp<=0) killEnemy(e);
 }
@@ -953,6 +954,11 @@ function draw(){
   for(const d of g.damageTexts){
     if(!inViewport(d.x,d.y,0,40)) continue;
     ctx.globalAlpha=clamp(d.life/(d.max||30),0,1); ctx.fillStyle=d.col||'#fff';
+    if(d.stroke){
+      ctx.lineWidth=3;
+      ctx.strokeStyle=d.stroke;
+      ctx.strokeText(d.txt,d.x,d.y);
+    }
     ctx.fillText(d.txt,d.x,d.y);
   }
   ctx.globalAlpha=1;
