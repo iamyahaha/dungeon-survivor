@@ -715,7 +715,7 @@ function addPermanentDebuff(seed){
 }
 
 function trySkillDebuff(kind,power){
-  const tempChance=clamp(({orb:0.42,blade:0.52,nova:0.60,dash:0.46}[kind]||0.42)+(power||1)*0.035,0,0.82);
+  const tempChance=clamp(({orb:0.68,blade:0.74,nova:0.80,dash:0.64}[kind]||0.68)+(power||1)*0.025,0,0.92);
   const permChance=clamp(({orb:0.035,blade:0.045,nova:0.055,dash:0.030}[kind]||0.035)+(power||1)*0.006,0,0.095);
   if(Math.random()<tempChance) addTempDebuff(kind,power);
   if(Math.random()<permChance) addPermanentDebuff(kind);
@@ -1102,11 +1102,15 @@ function upgradePool(){
     lvl:w.bolt.types.includes('wind')?1:'',apply:()=>{ learnBoltType(w,'wind',()=>{ w.bolt.speed*=1.1; w.bolt.dmg+=4; }); }});
   pool.push({id:'orbit_blade',ico:'🗡️',name:'环绕飞刃',dropWeight:10,desc:()=> w.orbit.count===0?'获得1把环绕飞刃':'增加1把飞刃 / 伤害+6',
     lvl:w.orbit.lvl,apply:()=>{ w.orbit.count++; w.orbit.dmg+=6; w.orbit.lvl++; }});
-  pool.push({id:'orbit_area',ico:'⭕',name:'刃环扩张',dropWeight:6,desc:()=>'飞刃范围+18 体积+10%',lvl:'',apply:()=>{ w.orbit.radius+=18; w.orbit.size*=1.1; }});
-  pool.push({id:'orbit_spin',ico:'🌀',name:'回旋加速',dropWeight:6,desc:()=>'飞刃旋转速度+18% 伤害+4',lvl:'',apply:()=>{ w.orbit.spin*=1.18; w.orbit.dmg+=4; }});
+  if(w.orbit.count>0){
+    pool.push({id:'orbit_area',ico:'⭕',name:'刃环扩张',dropWeight:6,desc:()=>'飞刃范围+18 体积+10%',lvl:'',apply:()=>{ w.orbit.radius+=18; w.orbit.size*=1.1; }});
+    pool.push({id:'orbit_spin',ico:'🌀',name:'回旋加速',dropWeight:6,desc:()=>'飞刃旋转速度+18% 伤害+4',lvl:'',apply:()=>{ w.orbit.spin*=1.18; w.orbit.dmg+=4; }});
+  }
   pool.push({id:'nova',ico:'💥',name:'冲击波',dropWeight:9,desc:()=> w.nova.lvl===0?'周期性震退周围敌人':'冲击波范围+20 伤害+12',
     lvl:w.nova.lvl,apply:()=>{ if(w.nova.lvl===0)w.nova.lvl=1; else {w.nova.radius+=20;w.nova.dmg+=12;} w.nova.lvl++; w.nova.rate=Math.max(70,w.nova.rate-10);}});
-  pool.push({id:'nova_focus',ico:'🔆',name:'震荡核心',dropWeight:6,desc:()=>'冲击波冷却-12% 伤害+8',lvl:'',apply:()=>{ w.nova.rate=Math.max(55,Math.round(w.nova.rate*0.88)); w.nova.dmg+=8; if(w.nova.lvl===0)w.nova.lvl=1; }});
+  if(w.nova.lvl>0){
+    pool.push({id:'nova_focus',ico:'🔆',name:'震荡核心',dropWeight:6,desc:()=>'冲击波冷却-12% 伤害+8',lvl:'',apply:()=>{ w.nova.rate=Math.max(55,Math.round(w.nova.rate*0.88)); w.nova.dmg+=8; }});
+  }
   pool.push({id:'max_hp',ico:'❤️',name:'强健体魄',dropWeight:8,desc:()=>'最大生命+25 并回满',lvl:'',apply:()=>{ p0().maxhp+=25; p0().hp=p0().maxhp; }});
   pool.push({id:'move_speed',ico:'🥾',name:'轻盈步伐',dropWeight:8,desc:()=>'移动速度+12%',lvl:'',apply:()=>{ p0().speed*=1.12; }});
   pool.push({id:'pickup',ico:'🧲',name:'磁力拾取',dropWeight:8,desc:()=>'晶石和奖励拾取范围+40',lvl:'',apply:()=>{ g.stats.pickup+=40; }});
@@ -1642,7 +1646,10 @@ function killRarityItems(byRarity){
   return parts;
 }
 function upgradeItems(log){
-  return log.slice(-10).reverse().map(item=>(item.source==='drop'?'装备 ':'升级 ')+item.name);
+  return log.slice(-10).reverse().map(item=>item.source==='drop'?'装备 '+item.name:item.source==='curse'?'诅咒 '+item.name:'升级 '+item.name);
+}
+function debuffItems(debuffs){
+  return debuffs.slice(0,6).map(d=>d.name+' '+Math.ceil(d.life/60)+'秒');
 }
 function updateHUD(){
   const g=game,p=g.player;
@@ -1655,9 +1662,10 @@ function updateHUD(){
   document.getElementById('timeTag').textContent=String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');
   document.getElementById('hudStats').innerHTML=
     '<span class="hudTitle">属性</span>'+
-    '<span class="hudLine">移动速度 <b>'+p.speed.toFixed(1)+'</b> · 伤害倍率 <b>'+pct(g.stats.dmgMul)+'</b> · 暴击率 <b>'+pct(g.stats.crit)+'</b></span>'+
-    '<span class="hudLine">护甲 <b>'+g.stats.armor+'</b> · 生命恢复 <b>'+g.stats.regen.toFixed(1)+'</b>/秒 · 拾取范围 <b>'+Math.round(g.stats.pickup)+'</b></span>'+
-    '<span class="hudLine">经验倍率 <b>'+pct(g.stats.xpMul)+'</b> · 幸运 <b>'+pct(g.stats.luck)+'</b></span>';
+    '<span class="hudLine">移动速度 <b>'+moveSpeed().toFixed(1)+'</b> · 伤害倍率 <b>'+pct(damageMul())+'</b> · 暴击率 <b>'+pct(critChance())+'</b></span>'+
+    '<span class="hudLine">护甲 <b>'+armorValue()+'</b> · 生命恢复 <b>'+regenValue().toFixed(1)+'</b>/秒 · 拾取范围 <b>'+Math.round(pickupRange())+'</b></span>'+
+    '<span class="hudLine">经验倍率 <b>'+pct(xpMul())+'</b> · 幸运 <b>'+pct(luckValue())+'</b></span>'+
+    (g.debuffs.length?'<span class="hudLine">异常</span>'+chipRow(debuffItems(g.debuffs)):'');
   document.getElementById('hudUpgrades').innerHTML=
     '<span class="hudTitle">奖励</span>'+chipRow(upgradeItems(g.upgradeLog));
   document.getElementById('hudKills').innerHTML=
